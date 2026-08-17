@@ -1,9 +1,9 @@
-<#
+﻿<#
 .SYNOPSIS
     Clears browser caches and ALL temp files (however persistent) to free disk space.
 
 .DESCRIPTION
-    Portable — uses environment variables only, works on any Windows user
+    Portable -- uses environment variables only, works on any Windows user
     account without edits. Covers Chrome, Brave, Edge, Opera, Opera GX,
     Vivaldi, and Firefox caches, plus OS junk: %TEMP%/%TMP%, CrashDumps,
     shader caches, thumbnail cache, Windows Error Reporting, INetCache/
@@ -18,7 +18,7 @@
         permission-denied files can actually be removed.
       - Anything still locked after all that (open handle from a running
         service, AV scan, etc.) is scheduled for deletion on next reboot
-        via the Windows MoveFileEx API — so it WILL be gone, just not
+        via the Windows MoveFileEx API -- so it WILL be gone, just not
         instantly, instead of being silently skipped.
 
     -Aggressive unlocks system-level targets that need Administrator:
@@ -58,6 +58,16 @@ param(
     [switch]$DryRun,
     [switch]$SkipBrowsers
 )
+
+$LogPath = Join-Path $PSScriptRoot "CleanupLog.txt"
+try { Start-Transcript -Path $LogPath -Append -ErrorAction SilentlyContinue | Out-Null } catch { }
+
+trap {
+    Write-Host ""
+    Write-Host "SCRIPT ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host $_.ScriptStackTrace -ForegroundColor Red
+    continue
+}
 
 $ErrorActionPreference = 'SilentlyContinue'
 $Global:LeftoverReport   = @()
@@ -184,7 +194,7 @@ function Remove-PathContents {
 
     $stillLeftover = Get-ChildItem $Path -Recurse -Force -ErrorAction SilentlyContinue
     if ($scheduledCount -gt 0) {
-        Write-Host "Partially cleared: $Path — $scheduledCount locked file(s) scheduled for delete on next reboot." -ForegroundColor DarkYellow
+        Write-Host "Partially cleared: $Path -- $scheduledCount locked file(s) scheduled for delete on next reboot." -ForegroundColor DarkYellow
     }
     if ($stillLeftover) {
         $Global:LeftoverReport += [PSCustomObject]@{
@@ -237,7 +247,7 @@ $junkPaths = @(
 )
 foreach ($path in $junkPaths) { Remove-PathContents -Path $path }
 
-# --- Browser caches (portable — detects any profile that exists) -----------
+# --- Browser caches (portable -- detects any profile that exists) -----------
 if (-not $SkipBrowsers) {
     Write-Host "=== Clearing browser caches ===" -ForegroundColor Cyan
     $cachePaths = @(
@@ -329,10 +339,20 @@ if ($DryRun) {
             $lines += "Examples:   $($r.Sample)"
             $lines += ""
         }
-        $lines += "These are directories, not individual files — MoveFileEx reboot-scheduling only applies to files,"
+        $lines += "These are directories, not individual files -- MoveFileEx reboot-scheduling only applies to files,"
         $lines += "so empty locked directories can still show up here even after their contents are gone."
         $lines += "Re-run the script after a reboot to clear anything left behind."
         $lines -join "`r`n" | Out-File -FilePath $reportPath -Encoding UTF8
         Write-Host "Full report saved to: $reportPath" -ForegroundColor Cyan
     }
+}
+
+try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch { }
+
+# --- Keep window open when launched by double-click -------------------------
+if ($Host.Name -eq 'ConsoleHost') {
+    Write-Host ""
+    Write-Host "Log saved to: $LogPath" -ForegroundColor DarkGray
+    Write-Host "Press any key to close this window..." -ForegroundColor DarkGray
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 }
